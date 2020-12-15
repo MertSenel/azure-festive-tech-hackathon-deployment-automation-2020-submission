@@ -1,0 +1,45 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "project": {
+            "value": "mstswl2020"
+        },
+        "env": {
+            "value": "poc03"
+        },
+        "ProjectRGLocation": {
+            "value": "West Europe",
+            "metadata": {
+                "description": "Azure Region to Create the Project Resource Group in, used by the deployment scripts, this won't change where actual infrastructure will be deployed to",
+                "reference": "To see which Azure Regions are available and hosted in which Country visit: https://azure.microsoft.com/en-au/global-infrastructure/geographies/"
+            }
+        },
+        "Locations": {
+            "value": [{
+                    "AzureLocation": "West Europe",
+                    "CountryCode": "DE"
+                },
+                {
+                    "AzureLocation": "Australia East",
+                    "CountryCode": "AU"
+                }
+            ]
+        },
+        "dockerImageName": {
+            "value": "ghcr.io/mertsenel/santatechwishlist"
+        },
+        "HostingPlanSkuConfig": {
+            "value": {
+                "Tier": "Free",
+                "Name": "F1"
+            },
+            "metadata": {
+                "description": "This template will deploy Free App Service Plan, Traffic Manager and AutoScaling won't work, Use it while developing the ARM template"
+            }
+        },
+        "autoscaleEnabled": {
+            "value": true
+        }
+    }
+}

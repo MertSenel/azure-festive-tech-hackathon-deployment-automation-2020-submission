@@ -1,0 +1,15 @@
+{
+    "appService.preDeployTask": "publish-release",
+    "appService.deploySubpath": "bin\\Release\\net5.0\\publish",
+    "appService.defaultWebAppToDeploy": "/subscriptions/69dc95d8-087e-4810-910e-526a1844217b/resourceGroups/rg-santas-wishlist/providers/Microsoft.Web/sites/santawishlist",
+    "workbench.colorCustomizations": {
+        "activityBar.activeBackground": "#50edd2",
+        "activityBar.activeBorder": "#d252ed",
+        "activityBar.background": "#50edd2",
+        "activityBar.foreground": "#15202b",
+        "activityBar.inactiveForeground": "#15202b99",
+        "activityBarBadge.background": "#d252ed",
+        "activityBarBadge.foreground": "#15202b"
+    },
+    "peacock.color": "#22e8c6"
+}

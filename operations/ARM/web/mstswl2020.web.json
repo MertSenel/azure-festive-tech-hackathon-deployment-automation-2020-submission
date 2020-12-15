@@ -1,0 +1,367 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "project": {
+            "type": "string",
+            "metadata": {
+                "description": "Project Prefix"
+            }
+        },
+        "env": {
+            "type": "string",
+            "metadata": {
+                "description": "Environment Code"
+            }
+        },
+        "ProjectRGLocation": {
+            "type": "string",
+            "defaultValue": "West Europe",
+            "metadata": {
+                "description": "Azure Region to Create the Project Resource Group in, used by the deployment scripts, this won't change where actual infrastructure will be deployed to",
+                "reference": "To see which Azure Regions are available and hosted in which Country visit: https://azure.microsoft.com/en-au/global-infrastructure/geographies/"
+            }
+        },
+        "dockerRegistryUrl": {
+            "type": "string",
+            "defaultValue": "https://ghcr.io",
+            "metadata": {
+                "description": "Base Docker Login Url for GitHub Container Registry"
+            }
+        },
+        "dockerImageName": {
+            "type": "string",
+            "defaultValue": "ghcr.io/{YOUR-GITHUB-USERNAME}/santatechwishlist",
+            "metadata": {
+                "description": "Full Docker Image Name for Github Container Registry, Change with Yours"
+            }
+        },
+        "dockerImageTag": {
+            "type": "string",
+            "defaultValue": "latest",
+            "metadata": {
+                "description": "Docker Image Tag"
+            }
+        },
+        "alwaysOn": {
+            "type": "bool",
+            "defaultValue": false,
+            "metadata": {
+                "description": "Always On Setting for App Services"
+            }
+        },
+        "storageContainerName": {
+            "type": "string",
+            "defaultValue": "santatechwishlist",
+            "metadata": {
+                "description": "storageContainerName"
+            }
+        },
+        "Locations": {
+            "type": "array",
+            "defaultValue": [{
+                    "AzureLocation": "West Europe",
+                    "CountryCode": "DE"
+                },
+                {
+                    "AzureLocation": "Australia East",
+                    "CountryCode": "AU"
+                }
+            ],
+            "metadata": {
+                "description": "Array of object that consists Country Code and Azure Region to Deploy Infra and Route Trafic From",
+                "description2": "For Country Codes to use visit: https://docs.microsoft.com/en-us/azure/traffic-manager/traffic-manager-geographic-regions",
+                "description3": "To see which Azure Region is hosted in which Country visit: https://azure.microsoft.com/en-au/global-infrastructure/geographies/"
+            }
+        },
+        "HostingPlanSkuConfig": {
+            "type": "object",
+            "defaultValue": {
+                "Tier": "PremiumV2",
+                "Name": "P1v2"
+            },
+            "metadata": {
+                "description": "Hosting Plan SKU details as an object"
+            }
+        },
+        "autoscaleEnabled": {
+            "type": "bool",
+            "defaultValue": false,
+            "allowedValues": [true, false],
+            "metadata": {
+                "description": "Deploy AutoScaling True of False, used for deploying ASPs that doesnt support AutoScaling"
+            }
+        }
+    },
+    "variables": {
+        "ProjectRGName": "[tolower(concat(variables('project'),'-',variables('env'),'-','web','-','rg'))]",
+        "TrafficManagerDetails": {
+            "RgName": "[variables('ProjectRGName')]",
+            "TrafficManagerProfileName": "[tolower(concat(variables('project'),variables('env'),'tfm'))]"
+        },
+        "SubscriptionId": "[subscription().subscriptionId]",
+        "linuxFxVersion": "[concat('DOCKER|',parameters('dockerImageName'),':',parameters('dockerImageTag'))]",
+        "project": "[parameters('project')]",
+        "env": "[parameters('env')]",
+        "Locations": "[parameters('Locations')]",
+        "copy": [{
+            "name": "RegionDetailsCopy",
+            "count": "[length(variables('Locations'))]",
+            "input": {
+                "storage": {
+                    "StorageAccountDetails": {
+                        "name": "[tolower(concat(variables('project'),variables('env'),'str',variables('Locations')[copyIndex('RegionDetailsCopy')].CountryCode))]"
+                    }
+                },
+                "RgName": "[variables('ProjectRGName')]",
+                "location": "[variables('Locations')[copyIndex('RegionDetailsCopy')].AzureLocation]",
+                "AppServicePlanDetails": {
+                    "properties": {
+                        "name": "[tolower(concat(variables('project'),variables('env'),'asp',variables('Locations')[copyIndex('RegionDetailsCopy')].CountryCode))]"
+                    },
+                    "sku": "[parameters('HostingPlanSkuConfig')]",
+                    "AutoScaleDetails": {
+                        "settingName": "[tolower(concat(variables('project'),variables('env'),'asp',variables('Locations')[copyIndex('RegionDetailsCopy')].CountryCode,'-autoscale-setting'))]",
+                        "capacity": {
+                            "minimum": 1,
+                            "maximum": 2,
+                            "default": 1
+                        },
+                        "rules": {
+                            "metricName": "CpuPercentage",
+                            "metricThresholdToScaleOut": 60,
+                            "metricThresholdToScaleIn": 25,
+                            "changeCountScaleOut": 1,
+                            "changeCountScaleIn": 1
+                        },
+                        "autoscaleEnabled": "[parameters('autoscaleEnabled')]"
+                    }
+                },
+                "WebAppDetails": {
+                    "properties": {
+                        "name": "[tolower(concat(variables('project'),variables('env'),'web',variables('Locations')[copyIndex('RegionDetailsCopy')].CountryCode))]"
+                    }
+                },
+                "TrafficManagerGeoMappingCountryCode": "[variables('Locations')[copyIndex('RegionDetailsCopy')].CountryCode]"
+            }
+        }]
+    },
+    "resources": [{
+            "copy": {
+                "name": "StorageAccountsCopy",
+                "count": "[length(variables('RegionDetailsCopy'))]"
+            },
+            "apiVersion": "2019-06-01",
+            "type": "Microsoft.Storage/storageAccounts",
+            "name": "[variables('RegionDetailsCopy')[copyIndex('StorageAccountsCopy')].storage.StorageAccountDetails.Name]",
+            "location": "[variables('RegionDetailsCopy')[copyIndex('StorageAccountsCopy')].location]",
+            "tags": {
+                "displayName": "Santa Tech Wish List Storage Account",
+                "ProjectCode": "[parameters('project')]",
+                "Environment": "[parameters('env')]",
+                "Region": "[variables('RegionDetailsCopy')[copyIndex('StorageAccountsCopy')].location]"
+            },
+            "sku": {
+                "name": "Standard_LRS"
+            },
+            "properties": {
+                "supportsHttpsTrafficOnly": true,
+                "minimumTlsVersion": "TLS1_2",
+                "allowBlobPublicAccess": false
+            }
+        },
+        {
+            "copy": {
+                "name": "AppServicePlansCopy",
+                "count": "[length(variables('RegionDetailsCopy'))]"
+            },
+            "apiVersion": "2018-02-01",
+            "name": "[variables('RegionDetailsCopy')[copyIndex('AppServicePlansCopy')].AppServicePlanDetails.properties.Name]",
+            "type": "Microsoft.Web/serverfarms",
+            "location": "[variables('RegionDetailsCopy')[copyIndex('AppServicePlansCopy')].location]",
+            "kind": "linux",
+            "tags": {},
+            "dependsOn": [],
+            "properties": {
+                "name": "[variables('RegionDetailsCopy')[copyIndex('AppServicePlansCopy')].AppServicePlanDetails.properties.Name]",
+                "reserved": true
+            },
+            "sku": {
+                "Tier": "[variables('RegionDetailsCopy')[copyIndex('AppServicePlansCopy')].AppServicePlanDetails.sku.Tier]",
+                "Name": "[variables('RegionDetailsCopy')[copyIndex('AppServicePlansCopy')].AppServicePlanDetails.sku.Name]",
+                "capacity": 1
+            }
+        },
+        {
+            "copy": {
+                "name": "AutoScaleSettingsCopy",
+                "count": "[length(variables('RegionDetailsCopy'))]"
+            },
+            "condition": "[variables('RegionDetailsCopy')[copyIndex('AutoScaleSettingsCopy')].AppServicePlanDetails.AutoScaleDetails.autoscaleEnabled]",
+            "type": "Microsoft.Insights/autoscalesettings",
+            "name": "[variables('RegionDetailsCopy')[copyIndex('AutoScaleSettingsCopy')].AppServicePlanDetails.AutoScaleDetails.settingName]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', variables('RegionDetailsCopy')[copyIndex('AutoScaleSettingsCopy')].AppServicePlanDetails.properties.Name)]"
+            ],
+            "apiVersion": "2014-04-01",
+            "location": "[variables('RegionDetailsCopy')[copyIndex('AutoScaleSettingsCopy')].location]",
+            "properties": {
+                "profiles": [{
+                    "name": "DefaultAutoscaleProfile",
+                    "capacity": {
+                        "minimum": "[variables('RegionDetailsCopy')[copyIndex('AutoScaleSettingsCopy')].AppServicePlanDetails.AutoScaleDetails.capacity.minimum]",
+                        "maximum": "[variables('RegionDetailsCopy')[copyIndex('AutoScaleSettingsCopy')].AppServicePlanDetails.AutoScaleDetails.capacity.maximum]",
+                        "default": "[variables('RegionDetailsCopy')[copyIndex('AutoScaleSettingsCopy')].AppServicePlanDetails.AutoScaleDetails.capacity.default]"
+                    },
+                    "rules": [{
+                            "metricTrigger": {
+                                "metricName": "[variables('RegionDetailsCopy')[copyIndex('AutoScaleSettingsCopy')].AppServicePlanDetails.AutoScaleDetails.rules.metricName]",
+                                "metricNamespace": "",
+                                "metricResourceUri": "[resourceId('Microsoft.Web/serverfarms', variables('RegionDetailsCopy')[copyIndex('AutoScaleSettingsCopy')].AppServicePlanDetails.properties.Name)]",
+                                "timeGrain": "PT5M",
+                                "statistic": "Average",
+                                "timeWindow": "PT10M",
+                                "timeAggregation": "Average",
+                                "operator": "GreaterThan",
+                                "threshold": "[variables('RegionDetailsCopy')[copyIndex('AutoScaleSettingsCopy')].AppServicePlanDetails.AutoScaleDetails.rules.metricThresholdToScaleOut]"
+                            },
+                            "scaleAction": {
+                                "direction": "Increase",
+                                "type": "ChangeCount",
+                                "value": "[variables('RegionDetailsCopy')[copyIndex('AutoScaleSettingsCopy')].AppServicePlanDetails.AutoScaleDetails.rules.changeCountScaleOut]",
+                                "cooldown": "PT10M"
+                            }
+                        },
+                        {
+                            "metricTrigger": {
+                                "metricName": "[variables('RegionDetailsCopy')[copyIndex('AutoScaleSettingsCopy')].AppServicePlanDetails.AutoScaleDetails.rules.metricName]",
+                                "metricNamespace": "",
+                                "metricResourceUri": "[resourceId('Microsoft.Web/serverfarms', variables('RegionDetailsCopy')[copyIndex('AutoScaleSettingsCopy')].AppServicePlanDetails.properties.Name)]",
+                                "timeGrain": "PT5M",
+                                "statistic": "Average",
+                                "timeWindow": "PT10M",
+                                "timeAggregation": "Average",
+                                "operator": "LessThan",
+                                "threshold": "[variables('RegionDetailsCopy')[copyIndex('AutoScaleSettingsCopy')].AppServicePlanDetails.AutoScaleDetails.rules.metricThresholdToScaleIn]"
+                            },
+                            "scaleAction": {
+                                "direction": "Decrease",
+                                "type": "ChangeCount",
+                                "value": "[variables('RegionDetailsCopy')[copyIndex('AutoScaleSettingsCopy')].AppServicePlanDetails.AutoScaleDetails.rules.changeCountScaleIn]",
+                                "cooldown": "PT10M"
+                            }
+                        }
+                    ]
+                }],
+                "enabled": "[variables('RegionDetailsCopy')[copyIndex('AutoScaleSettingsCopy')].AppServicePlanDetails.AutoScaleDetails.autoscaleEnabled]",
+                "targetResourceUri": "[resourceId('Microsoft.Web/serverfarms', variables('RegionDetailsCopy')[copyIndex('AutoScaleSettingsCopy')].AppServicePlanDetails.properties.Name)]"
+            }
+        },
+        {
+            "copy": {
+                "name": "WebAppDeployCopy",
+                "count": "[length(variables('RegionDetailsCopy'))]"
+            },
+            "apiVersion": "2018-11-01",
+            "name": "[variables('RegionDetailsCopy')[copyIndex('WebAppDeployCopy')].WebAppDetails.properties.name]",
+            "type": "Microsoft.Web/sites",
+            "location": "[variables('RegionDetailsCopy')[copyIndex('WebAppDeployCopy')].location]",
+            "tags": {},
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms/', variables('RegionDetailsCopy')[copyIndex('WebAppDeployCopy')].AppServicePlanDetails.properties.name)]",
+                "[resourceId('Microsoft.Storage/storageAccounts',variables('RegionDetailsCopy')[copyIndex('WebAppDeployCopy')].storage.StorageAccountDetails.Name)]"
+            ],
+            "properties": {
+                "name": "[variables('RegionDetailsCopy')[copyIndex('WebAppDeployCopy')].WebAppDetails.properties.name]",
+                "siteConfig": {
+                    "appSettings": [{
+                            "name": "DOCKER_REGISTRY_SERVER_URL",
+                            "value": "[parameters('dockerRegistryUrl')]"
+                        },
+                        {
+                            "name": "DOCKER_REGISTRY_SERVER_USERNAME",
+                            "value": ""
+                        },
+                        {
+                            "name": "DOCKER_REGISTRY_SERVER_PASSWORD",
+                            "value": ""
+                        },
+                        {
+                            "name": "WEBSITES_ENABLE_APP_SERVICE_STORAGE",
+                            "value": "false"
+                        },
+                        {
+                            "name": "connectionString",
+                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=',variables('RegionDetailsCopy')[copyIndex('WebAppDeployCopy')].storage.StorageAccountDetails.Name,';AccountKey=',listKeys(resourceId('Microsoft.Storage/storageAccounts',variables('RegionDetailsCopy')[copyIndex('WebAppDeployCopy')].storage.StorageAccountDetails.Name), '2019-06-01').keys[0].value,';EndpointSuffix=','core.windows.net')]"
+                        },
+                        {
+                            "name": "storageContainerName",
+                            "value": "[parameters('storageContainerName')]"
+                        }
+                    ],
+                    "linuxFxVersion": "[variables('linuxFxVersion')]",
+                    "appCommandLine": "",
+                    "alwaysOn": "[parameters('alwaysOn')]"
+                },
+                "serverFarmId": "[concat('/subscriptions/', variables('SubscriptionId'),'/resourcegroups/', variables('RegionDetailsCopy')[copyIndex('WebAppDeployCopy')].RgName, '/providers/Microsoft.Web/serverfarms/', variables('RegionDetailsCopy')[copyIndex('WebAppDeployCopy')].AppServicePlanDetails.properties.name)]",
+                "clientAffinityEnabled": false
+            }
+        },
+        {
+            "type": "Microsoft.Network/trafficManagerProfiles",
+            "apiVersion": "2018-04-01",
+            "name": "[variables('TrafficManagerDetails').TrafficManagerProfileName]",
+            "dependsOn": [
+                "WebAppDeployCopy"
+            ],
+            "location": "global",
+            "properties": {
+                "profileStatus": "Enabled",
+                "trafficRoutingMethod": "Geographic",
+                "dnsConfig": {
+                    "relativeName": "[variables('TrafficManagerDetails').TrafficManagerProfileName]",
+                    "ttl": 60
+                },
+                "monitorConfig": {
+                    "profileMonitorStatus": "Online",
+                    "protocol": "HTTP",
+                    "port": 80,
+                    "path": "/",
+                    "intervalInSeconds": 30,
+                    "toleratedNumberOfFailures": 3,
+                    "timeoutInSeconds": 10
+                },
+                "copy": [{
+                    "name": "endpoints",
+                    "count": "[length(variables('RegionDetailsCopy'))]",
+                    "input": {
+                        "id": "[concat(resourceId('Microsoft.Network/trafficManagerProfiles', variables('TrafficManagerDetails').TrafficManagerProfileName), '/azureEndpoints/',toLower(variables('RegionDetailsCopy')[copyIndex('endpoints')].TrafficManagerGeoMappingCountryCode),'-endpoint')]",
+                        "name": "[concat(toLower(variables('RegionDetailsCopy')[copyIndex('endpoints')].TrafficManagerGeoMappingCountryCode),'-endpoint')]",
+                        "type": "Microsoft.Network/trafficManagerProfiles/azureEndpoints",
+                        "properties": {
+                            "endpointStatus": "Enabled",
+                            "endpointMonitorStatus": "Online",
+                            "targetResourceId": "[concat('/subscriptions/', variables('SubscriptionId'),'/resourcegroups/', variables('RegionDetailsCopy')[copyIndex('endpoints')].RgName, '/providers/Microsoft.Web/sites/', variables('RegionDetailsCopy')[copyIndex('endpoints')].WebAppDetails.properties.name)]",
+                            "target": "[concat(variables('RegionDetailsCopy')[copyIndex('endpoints')].WebAppDetails.properties.name,'.azurewebsites.net')]",
+                            "weight": 1,
+                            "priority": "[copyIndex('endpoints',1)]",
+                            "endpointLocation": "[variables('RegionDetailsCopy')[copyIndex('endpoints')].location]",
+                            "geoMapping": [
+                                "[variables('RegionDetailsCopy')[copyIndex('endpoints')].TrafficManagerGeoMappingCountryCode]"
+                            ]
+                        }
+                    }
+                }],
+                "trafficViewEnrollmentStatus": "Disabled",
+                "maxReturn": 0
+            }
+        }
+
+    ],
+    "outputs": {
+        "TrafficManagerFQDN": {
+            "type": "string",
+            "value": "[reference(resourceId('Microsoft.Network/trafficManagerProfiles',variables('TrafficManagerDetails').TrafficManagerProfileName),'2018-04-01','Full').properties.dnsConfig.fqdn]"
+        }
+    }
+}

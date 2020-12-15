@@ -1,0 +1,66 @@
+# This is a basic workflow to help you get started with Actions
+
+name: 'Build And Publish Docker Image'
+
+# Controls when the action will run. 
+on:
+  # Triggers the workflow on push or pull request events but only for the main branch
+  # push:
+  #   branches: [ main ]
+  # pull_request:
+  #   branches: [ main ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      workflowAction:
+        description: 'Action'
+        default: 'Build And Publish Docker Image'
+        required: true
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+        
+      - name: Build and Push Docker Image
+        shell: pwsh
+        run: |
+          $uniqueTag = $env:GITHUB_SHA
+          $Actor = $env:GITHUB_ACTOR 
+          $Repository = $Actor.tolower()
+          $ImageFullPath = "ghcr.io/$Repository/santatechwishlist"
+          $UniqueImageDest = "$($ImageFullPath):$($uniqueTag)"
+          $LatestImageDest = "$($ImageFullPath):latest"
+          
+          echo "Display Pipeline Vars"
+          echo "tag: $tag"
+          echo "Actor: $Actor"
+          echo "Repository: $Repository"
+          echo "UniqueImageDest: $UniqueImageDest"
+          echo "LatestImageDest: $LatestImageDest"
+          
+          cd source/
+        
+          # new login with new container registry url and PAT
+          echo ${{ secrets.CR_PAT }} | docker login ghcr.io -u $env:GITHUB_ACTOR --password-stdin
+
+          # new container registry urls added
+          docker pull $LatestImageDest
+
+          # Build and Tag with Commit SHA
+          docker build . --tag $UniqueImageDest --cache-from $LatestImageDest
+
+          # Also tag as latest
+          docker tag $UniqueImageDest $LatestImageDest
+          
+          # push
+          docker push $UniqueImageDest
+          docker push $LatestImageDest

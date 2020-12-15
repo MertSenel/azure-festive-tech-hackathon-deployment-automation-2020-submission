@@ -1,0 +1,97 @@
+@page "/"
+
+<div>
+    <h1>🎄 Wish list for Santa</h1>
+    <br />
+    <h3>What would you like to have this year?</h3>
+    <br />
+    <br />
+    <label>🎅 What's your Family Name?</label><br>
+    <input placeholder="Family Name" @bind="newFamilyName" /><br>
+    <br />
+    <label>🤶 What's your name?</label><br>
+    <input placeholder="Name" @bind="newName" /><br>
+    <br />
+    <label>✍ What present would you like?</label><br>
+    <input placeholder="Present" @bind="newPresent" /><br>
+    <br />
+    <label>🎁 How much do you want this present? </label> <br>
+    <input placeholder="Motivation" @bind="newIWantItThisMuch" />
+    <br /><br>
+    <button @onclick="AddPresent">Add Present</button>
+    <br><br><br>
+    <div>
+        <table class="table table-striped table-bordered">
+            <thead>
+                <tr>
+                    <th>Family Name</th>
+                    <th>Name</th>
+                    <th>Present</th>
+                    <th>How bad do you want it?</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var present in presents)
+                {
+                    <tr>
+                        <td>@present.FamilyName</td>
+                        <td>@present.Name</td>
+                        <td>@present.Present</td>
+                        <td>@present.IWantItThisMuch</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <button @onclick="SendToSanta" disabled=@isSubmitting>Send the list to Santa</button>
+    @submitMessage
+</div>
+
+@code {
+    private List<PresentsModel> presents = new List<PresentsModel>();
+    private string newPresent;
+    private string newName;
+    private string newFamilyName;
+    private string newIWantItThisMuch;
+    private bool isSubmitting;
+    private string submitMessage;
+
+    private StorageAccount storage = new StorageAccount();
+    private void AddPresent()
+    {
+        if (!string.IsNullOrWhiteSpace(newPresent))
+        {
+            presents.Add(new PresentsModel
+            {
+                Name = newName,
+                FamilyName = newFamilyName,
+                Present = newPresent,
+                IWantItThisMuch = newIWantItThisMuch
+            });
+
+            newPresent = string.Empty;
+            newName = string.Empty;
+            newIWantItThisMuch = string.Empty;
+
+        }
+    }
+    async Task SendToSanta()
+    {
+        if (isSubmitting)
+            return;
+
+        isSubmitting = true;
+        try
+        {
+            await Task.Delay(1000); // TODO do actual work here
+            await storage.UploadWishList(presents, newFamilyName);
+            submitMessage = "Santa received your wishlist! Let's hope for a nice present!";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+
+    }
+
+}
